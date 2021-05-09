@@ -1,5 +1,3 @@
-# %%
-
 # Set of all keywords in the Jack grammar.
 KEYWORDS = {
     'class',
@@ -37,23 +35,26 @@ SYMBOLS = {
 class Token:
     def __init__(self, token: str):
         if token == '':
-            self.type = 'EOF'
+            self.type = 'eof'
             self.value = token
         elif token in KEYWORDS:
-            self.type = 'KEYWORD'
+            self.type = 'keyword'
             self.value = token
         elif token in SYMBOLS:
-            self.type = 'SYMBOL'
+            self.type = 'symbol'
             self.value = token
         elif token[0].isdigit():
-            self.type = 'INT_CONST'
+            self.type = 'integerConstant'
             self.value = int(token)
         elif token[0] == '"':
-            self.type = 'STR_CONST'
+            self.type = 'stringConstant'
             self.value = token[1:-1]
         else:
-            self.type = 'IDENTIFIER'
+            self.type = 'identifier'
             self.value = token
+
+    def __str__(self):
+        return f'{self.type}: {self.value}'
 
 
 # Class to generate and store a list of Tokens from the given code, along with 
@@ -66,11 +67,35 @@ class TokenList:
         self.pos = 0
         i = 0
 
+        # Add a newline at the end of the code if there isn't one there
+        if not code.endswith('\n'):
+            code += '\n'
+
         # Try block to catch the iteration reaching the end of the code while
         # still scanning a identifier or literal.
         try:
             while i < len(code):
                 char = code[i]
+
+                # If the character is a forward slash, check if we're dealing
+                # with a comment, and if so, skip till the end of the comment.
+                if char == '/':
+                    # If the next character is also a slash, then this is a
+                    # one line comment, so skip up to the next newline char.
+                    if code[i + 1] == '/':
+                        i += 2
+                        while code[i] != '\n':
+                            i += 1
+                        i += 1
+                        continue
+                    # If the next character is an asterix, then this is a block
+                    # comment, so skip until a block comment close is found.
+                    elif code[i + 1] == '*':
+                        i += 2
+                        while code[i:i + 2] != '*/':
+                            i += 1
+                        i += 2
+                        continue
 
                 # If the character is a symbol, generate a Token from it as is.
                 if char in SYMBOLS:
@@ -111,7 +136,9 @@ class TokenList:
                     if code[i] in SYMBOLS or code[i].isspace():
                         self.tokens.append(Token(token))
                     else:
-                        self.error(ValueError('Invalid character'), True)
+                        self.error(ValueError(
+                            f'Invalid character in identifier "{code[i]}"'
+                        ), True)
 
                 # If the character is whitespace, just continue.
                 elif char.isspace():
@@ -160,7 +187,10 @@ class TokenList:
             lines += code[l2l_newline + 1 : last_newline] + '\n'
         lines += str(line_num) + ' '
         lines += code[last_newline + 1 : next_newline] + '\n'
-        lines += ' ' * (col_num + len(str(line_num))) + '^'
+        lines += ' ' * len(str(line_num)) + ''.join(
+            char if char.isspace() else ' '
+            for char in code[last_newline + 1 : pos]
+        ) + ' ^'
 
         message = f'Error in line {line_num}, col {col_num}\n\n'
         message += lines + '\n\nSyntax error: ' + str(error)
@@ -179,7 +209,4 @@ class TokenList:
 
     # Function to neatly display all the parsed tokens.
     def __str__(self):
-        return str([f'{token.type}: {token.value}' for token in self.tokens])
-
-
-# %%
+        return str([str(token) for token in self.tokens])
