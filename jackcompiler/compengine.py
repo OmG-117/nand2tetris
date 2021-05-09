@@ -1,6 +1,4 @@
-# %%
-
-from tokenizer import Token, TokenList
+from tokenizer import TokenList
 
 # Set of all the native types in the Jack grammar.
 TYPES = {'int', 'char', 'boolean'}
@@ -11,27 +9,46 @@ STATEMENTS = {'let', 'if', 'while', 'do', 'return'}
 # Set of all the operators in the Jack grammar.
 OPS = {'+', '-', '*', '/', '&', '|', '<', '>', '='}
 
+# Set of all the non-terminals in the XML output spec.
+NON_TERMINALS = {
+    'class', 'classVarDec', 'subroutineDec', 'parameterList', 'subroutineBody',
+    'varDec', 'statements', 'whileStatement', 'ifStatement', 'returnStatement',
+    'letStatement', 'doStatement', 'expression', 'term', 'expressionList'
+}
+
 # Recursive class to form a parse tree of the compiled tokens.
 class ParseTree:
     def __init__(self):
         self.children = []
 
     def add_token(self, token):
-        self.children.append((token.type.lower(), token.value))
+        self.children.append((token.type, token.value))
 
     def add_subtree(self, tag, tree):
         self.children.append((tag, tree))
 
-    def __str__(self):
+    def as_xml(self, indent_level = 2, to_spec = False):
         string = ''
-        INDENT = ' ' * 2
+        padding = ' ' * indent_level
         for tag, value in self.children:
-            if type(value) is ParseTree:
-                value = str(value).replace('\n', '\n' + INDENT)
-                string += f'\n<{tag}>{value}\n</{tag}>'
+            if type(value) is ParseTree:                    
+                value = value.as_xml(indent_level, to_spec)
+                if to_spec and tag not in NON_TERMINALS:
+                    string += value
+                else:
+                    value = value.replace('\n', '\n' + padding)
+                    string += f'\n<{tag}>{value}\n</{tag}>'
             else:
+                if to_spec and type(value) is str:
+                    value = value.replace('"', '&quot;')
+                    value = value.replace('&', '&amp;')
+                    value = value.replace('<', '&lt;')
+                    value = value.replace('>', '&gt;')
                 string += f'\n<{tag}> {value} </{tag}>'
         return string
+
+    def __str__(self):
+        return self.as_xml()
 
 
 # Function to test the compilation engine, including error reporting.
@@ -46,10 +63,10 @@ def test(code: str):
 
 # Helper function for eating an identifier.
 def eat_identifier_helper(tokens: TokenList, tree: ParseTree):
-    if (token := tokens.pop()).type == 'IDENTIFIER':
+    if (token := tokens.pop()).type == 'identifier':
         tree.add_token(token)
     else:
-        raise ValueError(f'Invalid identifier "{token.value}"')
+        tokens.error(ValueError(f'Invalid identifier "{token.value}"'))
 
 
 # Helper function for eating an expected symbol.
@@ -57,7 +74,7 @@ def eat_symbol_helper(tokens: TokenList, tree: ParseTree, symbol: str):
     if (token := tokens.pop()).value == symbol:
         tree.add_token(token)
     else:
-        raise ValueError(f'Expected {symbol}')
+        tokens.error(ValueError(f'Expected {symbol}'))
 
 
 # Helper function for compiling variable declarations.
@@ -66,10 +83,10 @@ def variable_declaration_helper(tokens: TokenList, tree: ParseTree):
     # Eat the keyword or identifier indicating the type of the variable.
     if (token := tokens.pop()).value in TYPES:
         tree.add_token(token)
-    elif token.type == 'IDENTIFIER':
+    elif token.type == 'identifier':
         tree.add_token(token)
     else:
-        raise ValueError(f'Invalid type "{token.value}"')
+        tokens.error(ValueError(f'Invalid type "{token.value}"'))
 
     # Eat the identifier representing the name of the first variable.
     eat_identifier_helper(tokens, tree)
@@ -80,7 +97,7 @@ def variable_declaration_helper(tokens: TokenList, tree: ParseTree):
         if token.value == ',':
             tree.add_token(token)
         else:
-            raise ValueError('Expected "," or ";"')
+            tokens.error(ValueError('Expected "," or ";"'))
         eat_identifier_helper(tokens, tree)
 
     # Add the ';' token indicating the end of the statement.
@@ -110,8 +127,8 @@ def compile_file(tokens: TokenList):
 
     # If anything but a class declaration is encountered before the end of the
     # file is reached, raise an error.
-    if tokens.pop().type != 'EOF':
-        raise ValueError('All top level declarations must be classes')
+    if tokens.pop().type != 'eof':
+        tokens.error(ValueError('All top level declarations must be classes'))
 
     return tree
 
@@ -124,7 +141,7 @@ def compile_class(tokens: TokenList):
     if (token := tokens.pop()).value == 'class':
         tree.add_token(token)
     else:
-        raise ValueError(f'Invalid class declaration')
+        tokens.error(ValueError(f'Invalid class declaration'))
 
     # Eat the identifier representing the name of the class.
     eat_identifier_helper(tokens, tree)
@@ -140,7 +157,7 @@ def compile_class(tokens: TokenList):
         elif token.value in ('constructor', 'function', 'method'):
             tree.add_subtree('subroutineDec', compile_subroutine_dec(tokens))
         else:
-            raise ValueError(f'Unexpected token "{tokens.pop().value}"')
+            tokens.error(ValueError(f'Unexpected token "{tokens.pop().value}"'))
 
     # Eat the '}' token indicating the end of the class body.
     eat_symbol_helper(tokens, tree, '}')
@@ -156,7 +173,7 @@ def compile_class_var_dec(tokens: TokenList):
     if (token := tokens.pop()).value in ('static', 'field'):
         tree.add_token(token)
     else:
-        raise ValueError('Invalid class variable declaration')
+        tokens.error(ValueError('Invalid class variable declaration'))
 
     # Eat the rest of the variable declaration in the helper function.
     variable_declaration_helper(tokens, tree)
@@ -173,15 +190,15 @@ def compile_subroutine_dec(tokens: TokenList):
     if (token := tokens.pop()).value in ('constructor', 'function', 'method'):
         tree.add_token(token)
     else:
-        raise ValueError(f'Invalid subroutine declaration')
+        tokens.error(ValueError(f'Invalid subroutine declaration'))
 
     # Eat the keyword or identifier indicating the return value type.
     if (token := tokens.pop()).value in ('void', *TYPES):
         tree.add_token(token)
-    elif token.type == 'IDENTIFIER':
+    elif token.type == 'identifier':
         tree.add_token(token)
     else:
-        raise ValueError(f'Invalid type "{token.value}"')
+        tokens.error(ValueError(f'Invalid type "{token.value}"'))
 
     # Eat the identifier representing the name of this subroutine.
     eat_identifier_helper(tokens, tree)
@@ -209,11 +226,11 @@ def compile_parameter_list(tokens: TokenList):
     # of a parameter. If it is, eat it and then eat the identifier representing
     # the parameter's name. Else, only a ')' token is valid.
     token = tokens.get()
-    if token.value in TYPES or token.type == 'IDENTIFIER':
+    if token.value in TYPES or token.type == 'identifier':
         tree.add_token(tokens.pop())
         eat_identifier_helper(tokens, tree)
     elif token.value != ')':
-        raise ValueError(f'Invalid type "{tokens.pop().value}"')
+        tokens.error(ValueError(f'Invalid type "{tokens.pop().value}"'))
 
     # Look to see if the next token is ')'. If it is not, eat a ',' token,
     # a keyword or identifier, and a final identifier indicating a parameter.
@@ -221,13 +238,13 @@ def compile_parameter_list(tokens: TokenList):
         if (token := tokens.pop()).value == ',':
             tree.add_token(token)
         else:
-            raise ValueError('Expected "," or ")"')
+            tokens.error(ValueError('Expected "," or ")"'))
         if (token := tokens.pop()).value in TYPES:
             tree.add_token(token)
-        elif token.type == 'IDENTIFIER':
+        elif token.type == 'identifier':
             tree.add_token(token)
         else:
-            raise ValueError(f'Invalid type "{token.value}"')
+            tokens.error(ValueError(f'Invalid type "{token.value}"'))
         eat_identifier_helper(tokens, tree)
 
     return tree
@@ -262,7 +279,7 @@ def compile_var_dec(tokens: TokenList):
     if (token := tokens.pop()).value == 'var':
         tree.add_token(token)
     else:
-        raise ValueError(f'Invalid variable declaration')
+        tokens.error(ValueError(f'Invalid variable declaration'))
 
     # Eat the rest of the variable declaration in the helper function.
     variable_declaration_helper(tokens, tree)
@@ -288,7 +305,7 @@ def compile_statements(tokens: TokenList):
         elif token.value == 'return':
             tree.add_subtree('returnStatement', compile_return_statement(tokens))
         else:
-            raise ValueError(f'Unexpected token "{tokens.pop().value}"')
+            tokens.error(ValueError(f'Unexpected token "{tokens.pop().value}"'))
 
     return tree
 
@@ -301,7 +318,7 @@ def compile_let_statement(tokens: TokenList):
     if (token := tokens.pop()).value == 'let':
         tree.add_token(token)
     else:
-        raise ValueError(f'Invalid let statement')
+        tokens.error(ValueError(f'Invalid let statement'))
 
     # Eat the identifier representing the variable being assigned to.
     eat_identifier_helper(tokens, tree)
@@ -332,7 +349,7 @@ def compile_if_statement(tokens: TokenList):
     if (token := tokens.pop()).value == 'if':
         tree.add_token(token)
     else:
-        raise ValueError(f'Invalid if statement')
+        tokens.error(ValueError(f'Invalid if statement'))
 
     # Eat the '(' token indicating the start of the condition.
     eat_symbol_helper(tokens, tree, '(')
@@ -362,7 +379,7 @@ def compile_while_statement(tokens: TokenList):
     if (token := tokens.pop()).value == 'while':
         tree.add_token(token)
     else:
-        raise ValueError(f'Invalid while statement')
+        tokens.error(ValueError(f'Invalid while statement'))
 
     # Eat the '(' token indicating the start of the condition.
     eat_symbol_helper(tokens, tree, '(')
@@ -387,7 +404,7 @@ def compile_do_statement(tokens: TokenList):
     if (token := tokens.pop()).value == 'do':
         tree.add_token(token)
     else:
-        raise ValueError(f'Invalid do statement')
+        tokens.error(ValueError(f'Invalid do statement'))
 
     # Eat the subroutine call.
     tree.add_subtree('subroutineCall', compile_subroutine_call(tokens))
@@ -406,7 +423,7 @@ def compile_return_statement(tokens: TokenList):
     if (token := tokens.pop()).value == 'return':
         tree.add_token(token)
     else:
-        raise ValueError(f'Invalid return statement')
+        tokens.error(ValueError(f'Invalid return statement'))
 
     # Eat the optional expression.
     if tokens.get().value != ';':
@@ -439,7 +456,7 @@ def compile_term(tokens: TokenList):
     tree = ParseTree()
 
     # If the next token is a literal, it can be eaten as is.
-    if (token := tokens.get()).type in ('INT_CONST', 'STR_CONST'):
+    if (token := tokens.get()).type in ('integerConstant', 'stringConstant'):
         tree.add_token(tokens.pop())
 
     # If the next token is a keyword constant, it can be eaten as is.
@@ -449,7 +466,7 @@ def compile_term(tokens: TokenList):
     # If the next token is an identifier, it may be a variable name, an array
     # access, or a subroutine call to one which may be in another class. Look
     # ahead to the next to next token to determine what it is.
-    elif token.type == 'IDENTIFIER':
+    elif token.type == 'identifier':
         if (n2n_token := tokens.get(1)).value == '[':
             tree.add_token(tokens.pop())
             tree.add_token(tokens.pop())
@@ -473,7 +490,7 @@ def compile_term(tokens: TokenList):
 
     # If the next token is none of these, raise an error.
     else:
-        raise ValueError(f'Unexpected token "{tokens.pop().value}"')
+        tokens.error(ValueError(f'Unexpected token "{tokens.pop().value}"'))
 
     return tree
 
@@ -518,9 +535,7 @@ def compile_expression_list(tokens: TokenList):
         if (token := tokens.pop()).value == ',':
             tree.add_token(token)
         else:
-            raise ValueError('Expected "," or ")"')
+            tokens.error(ValueError('Expected "," or ")"'))
         tree.add_subtree('expression', compile_expression(tokens))
 
     return tree
-
-# %%
