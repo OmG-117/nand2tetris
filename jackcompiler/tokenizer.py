@@ -53,7 +53,7 @@ class Token:
             self.type = 'identifier'
             self.value = token
 
-    def __str__(self):
+    def __repr__(self):
         return f'{self.type}: {self.value}'
 
 
@@ -172,11 +172,7 @@ class TokenList:
             next_newline += 1
 
         col_num = pos - last_newline
-
-        line_num = 1
-        for i in range(last_newline):
-            if code[i] == '\n':
-                line_num += 1
+        line_num = 1 + code[ :last_newline + 1].count('\n')
 
         lines = ''
         if line_num > 1:
@@ -184,13 +180,14 @@ class TokenList:
             while code[l2l_newline] != '\n' and l2l_newline > 0:
                 l2l_newline -= 1
             lines += str(line_num - 1) + ' '
+            lines += ' ' * (len(str(line_num)) - len(str(line_num - 1)))
             lines += code[l2l_newline + 1 : last_newline] + '\n'
         lines += str(line_num) + ' '
         lines += code[last_newline + 1 : next_newline] + '\n'
-        lines += ' ' * len(str(line_num)) + ''.join(
+        lines += ' ' * len(str(line_num)) + ' ' + ''.join(
             char if char.isspace() else ' '
             for char in code[last_newline + 1 : pos]
-        ) + ' ^'
+        ) + '^'
 
         message = f'Error in line {line_num}, col {col_num}\n\n'
         message += lines + '\n\nSyntax error: ' + str(error)
