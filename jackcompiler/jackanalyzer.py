@@ -14,7 +14,7 @@ def main():
     target_paths = [
         os.path.join(input_directory, f)
         for f in os.listdir(input_directory)
-        if f.endswith('.jack')
+        if os.path.splitext(f)[1] == '.jack'
     ]
 
     # If there are no .jack files, raise an error
@@ -37,7 +37,7 @@ def main():
             raise SystemExit(exc)
 
         # Write the parse tree to a .xml file
-        output_path = os.path.splitext(target_path)[0] + '_gen.xml'
+        output_path = os.path.splitext(target_path)[0] + '.xml'
         with open(output_path, 'w') as f:
             f.write(parse_tree.as_xml(2, True)[1: ] + '\n')
 
