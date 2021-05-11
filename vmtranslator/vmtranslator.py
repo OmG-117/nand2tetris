@@ -1,10 +1,10 @@
-import glob
+import os
 import re
 import sys
 
 import generateasm
 
-DEBUG = False
+DEBUG = True
 
 TYPE_MAP = {
     'add'     : 'C_ARITHMETIC',
@@ -59,32 +59,57 @@ class Command:
             raise ValueError(f'Missing argument for "{terms[0]}"')
 
 def translate(code, filename):
-    for num, line in enumerate(code, 1):
+    output = ''
+    for num, line in enumerate(code.split('\n'), 1):
         if statement := re.sub(r'\s*//.*', '', line):
             try:
                 command = Command(statement, filename)
                 asm_code = ASM_GENERATOR_MAP[command.type](command)
-                asm_code = asm_code.replace('#', f'{filename[ :-3]}.{num}')
+                asm_code = asm_code.replace('#', f'{filename}.{num}')
                 comment = ('// ' + statement + '\n' if DEBUG else '')
-                yield comment + asm_code
+                output += comment + asm_code
             except ValueError as error:
                 raise ValueError(f'Syntax error in line {num}: {error}')
+    return output
 
 def main():
+    # Get the target directory from the command line args.
     input_directory = sys.argv[1]
-    target_files = [f for f in glob.glob(input_directory + '*.vm')]
-    output_file = input_directory + input_directory.split('\\')[-2] + '.asm'
-    with open(output_file, 'w') as f_out:
-        f_out.write(generateasm.bootstrap())
-        for input_file in target_files:
-            with open(input_file, 'r') as f_in:
-                vm_code = (line.strip() for line in f_in)
-                for asm_code in translate(vm_code, input_file.split('\\')[-1]):
-                    if not DEBUG:
-                        asm_code = re.sub(r'\s*//.*', '', asm_code)
-                    f_out.write(asm_code)
 
-    print(f'Wrote translated program into {output_file}')
+    # Get a list of all VM code files in the supplied directory.
+    print(f'Looking for .vm files in {input_directory}')
+    target_paths = [
+        os.path.join(input_directory, f)
+        for f in os.listdir(input_directory)
+        if os.path.splitext(f)[1] == '.vm'
+    ]
+
+    # If there are no .vm files, raise an error
+    if not target_paths:
+        raise ValueError('No .vm files in specified directory')
+    else:
+        print(f'Compiling {len(target_paths)} files in {input_directory}')
+
+    # Iterate through each target file and compile it separately.
+    compiled_code = []
+    for target_path in target_paths:
+        print(f'Translating {target_path}')
+        with open(target_path, 'r') as f:
+            target_contents = f.read()
+        
+        # Perform the translation, extracting the filename before calling
+        filename = os.path.splitext(os.path.basename(target_path))[0]
+        output = translate(target_contents, filename)
+
+        compiled_code.append(output)
+
+    # Write the translated instructions to a .asm file
+    output_filename = os.path.basename(input_directory) + '.asm'
+    output_path = os.path.join(input_directory, output_filename)
+    with open(output_path, 'w') as f:
+        f.write(generateasm.bootstrap() + ''.join(compiled_code))
+
+    print(f'Wrote translated program to {output_path}')
 
 if __name__ == '__main__':
     main()
