@@ -74,7 +74,7 @@ def eat_symbol_helper(tokens: TokenList, tree: ParseTree, symbol: str):
     if (token := tokens.pop()).value == symbol:
         tree.add_token(token)
     else:
-        tokens.error(ValueError(f'Expected {symbol}'))
+        tokens.error(ValueError(f'Expected "{symbol}"'))
 
 
 # Helper function for compiling variable declarations.
