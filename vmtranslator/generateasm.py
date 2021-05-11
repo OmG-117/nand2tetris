@@ -89,7 +89,7 @@ def get_std(segment, address):
 
 def get_static(filename, address):
     return f'''\
-    @{filename[ :-3]}.{address}
+    @{filename}.{address}
     D=M
 '''
 
@@ -124,7 +124,7 @@ def put_addr_std(segment, address):
 
 def put_addr_static(filename, address):
     return f'''\
-    @{filename[ :-3]}.{address}
+    @{filename}.{address}
     D=A
     @R15
     M=D
