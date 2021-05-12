@@ -40,25 +40,15 @@ class ParseTree:
                     string += f'\n<{tag}>{value}\n</{tag}>'
             else:
                 if to_spec and type(value) is str:
-                    value = value.replace('"', '&quot;')
                     value = value.replace('&', '&amp;')
                     value = value.replace('<', '&lt;')
                     value = value.replace('>', '&gt;')
+                    value = value.replace('"', '&quot;')
                 string += f'\n<{tag}> {value} </{tag}>'
         return string
 
     def __str__(self):
         return self.as_xml()
-
-
-# Function to test the compilation engine, including error reporting.
-def test(code: str):
-    tokens = TokenList(code)
-    try:
-        output = compile_file(tokens)
-    except ValueError as err:
-        tokens.error(err)
-    print(output)
 
 
 # Helper function for eating an identifier.
